@@ -1,0 +1,42 @@
+{
+  "name": "ChargePath — EV Station Finder",
+  "short_name": "ChargePath",
+  "description": "Find nearby EV charging stations ranked by ST-HGNN AI demand forecasting",
+  "start_url": "/map",
+  "display": "standalone",
+  "background_color": "#0a0f1e",
+  "theme_color": "#0a0f1e",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["navigation", "utilities", "travel"],
+  "icons": [
+    { "src": "/static/icons/icon-72.png",  "sizes": "72x72",   "type": "image/png", "purpose": "maskable any" },
+    { "src": "/static/icons/icon-96.png",  "sizes": "96x96",   "type": "image/png", "purpose": "maskable any" },
+    { "src": "/static/icons/icon-128.png", "sizes": "128x128", "type": "image/png", "purpose": "maskable any" },
+    { "src": "/static/icons/icon-144.png", "sizes": "144x144", "type": "image/png", "purpose": "maskable any" },
+    { "src": "/static/icons/icon-152.png", "sizes": "152x152", "type": "image/png", "purpose": "maskable any" },
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable any" },
+    { "src": "/static/icons/icon-384.png", "sizes": "384x384", "type": "image/png", "purpose": "maskable any" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable any" }
+  ],
+  "screenshots": [
+    { "src": "/static/icons/screenshot-mobile.png", "sizes": "390x844", "type": "image/png", "form_factor": "narrow" },
+    { "src": "/static/icons/screenshot-desktop.png", "sizes": "1280x720", "type": "image/png", "form_factor": "wide" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Find Nearby Stations",
+      "short_name": "Nearby",
+      "url": "/map",
+      "icons": [{ "src": "/static/icons/icon-96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Research Dashboard",
+      "short_name": "Dashboard",
+      "url": "/",
+      "icons": [{ "src": "/static/icons/icon-96.png", "sizes": "96x96" }]
+    }
+  ],
+  "prefer_related_applications": false
+}
