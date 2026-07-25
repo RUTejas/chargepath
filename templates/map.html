@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0a0f1e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ChargePath">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<title>ChargePath — Find EV Stations</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── ROOT ── */
+:root{
+  --bg:#0a0f1e;--surface:#111827;--card:#1a2235;--border:#232f45;
+  --blue:#4f9eff;--blue-glow:rgba(79,158,255,.18);
+  --green:#22d46a;--green-glow:rgba(34,212,106,.18);
+  --amber:#f5a623;--amber-glow:rgba(245,166,35,.18);
+  --red:#ff4f6d;--red-glow:rgba(255,79,109,.18);
+  --purple:#a78bfa;--cyan:#22d3ee;
+  --text:#e8edf5;--muted:#6b7fa3;--dim:#3a4a66;
+  --mono:'JetBrains Mono',monospace;--body:'Space Grotesk',sans-serif;
+  --radius:16px;--radius-sm:10px;
+  --panel-w:380px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--bg);
+  font-family:var(--body);color:var(--text)}
+
+/* ── LAYOUT ── */
+#app{display:flex;height:100vh;position:relative}
+#map{flex:1;position:relative;z-index:1}
+
+/* ── LEFT PANEL ── */
+#panel{
+  width:var(--panel-w);height:100%;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  position:relative;z-index:10;
+  transition:transform .35s cubic-bezier(.4,0,.2,1);
+}
+.panel-header{
+  padding:1.2rem 1.4rem .9rem;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.brand{display:flex;align-items:center;gap:.7rem;margin-bottom:1.1rem}
+.brand-icon{width:34px;height:34px;background:linear-gradient(135deg,var(--blue),var(--cyan));
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:1.1rem;flex-shrink:0}
+.brand-name{font-weight:700;font-size:1.05rem;letter-spacing:-.02em}
+.brand-sub{font-size:.65rem;color:var(--muted);font-family:var(--mono);margin-top:.1rem}
+
+/* ── SEARCH BAR ── */
+.search-wrap{position:relative;margin-bottom:.85rem}
+.search-input{
+  width:100%;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:.72rem 1rem .72rem 2.6rem;
+  color:var(--text);font-size:.88rem;font-family:var(--body);
+  outline:none;transition:border-color .2s,box-shadow .2s;
+}
+.search-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-glow)}
+.search-input::placeholder{color:var(--muted)}
+.search-icon{position:absolute;left:.85rem;top:50%;transform:translateY(-50%);
+  color:var(--muted);font-size:.9rem;pointer-events:none}
+
+/* ── LOCATE BUTTON ── */
+.locate-btn{
+  width:100%;background:linear-gradient(135deg,var(--blue),#2563eb);
+  border:none;border-radius:var(--radius-sm);padding:.72rem;
+  color:#fff;font-size:.88rem;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:.55rem;
+  transition:all .2s;font-family:var(--body);letter-spacing:.01em;
+  box-shadow:0 4px 15px rgba(79,158,255,.3);
+}
+.locate-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.locate-btn:active{transform:translateY(0);filter:none}
+.locate-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.locate-btn .spin{animation:spin .8s linear infinite;display:none}
+.locate-btn.loading .spin{display:inline-block}
+.locate-btn.loading .loc-icon{display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── FILTER ROW ── */
+.filters{display:flex;gap:.5rem;margin:.85rem 0 0;overflow-x:auto;padding-bottom:.2rem}
+.filters::-webkit-scrollbar{display:none}
+.filter-chip{
+  background:var(--card);border:1px solid var(--border);border-radius:20px;
+  padding:.3rem .8rem;font-size:.7rem;white-space:nowrap;cursor:pointer;
+  transition:all .15s;color:var(--muted);
+}
+.filter-chip:hover{border-color:var(--blue);color:var(--blue)}
+.filter-chip.active{background:var(--blue-glow);border-color:var(--blue);color:var(--blue)}
+.filter-chip.green.active{background:var(--green-glow);border-color:var(--green);color:var(--green)}
+.filter-chip.amber.active{background:var(--amber-glow);border-color:var(--amber);color:var(--amber)}
+
+/* ── SCROLL AREA ── */
+.panel-body{flex:1;overflow-y:auto;padding:1rem 1.2rem}
+.panel-body::-webkit-scrollbar{width:3px}
+.panel-body::-webkit-scrollbar-thumb{background:var(--dim);border-radius:2px}
+
+/* ── SECTION LABEL ── */
+.section-lbl{
+  font-family:var(--mono);font-size:.6rem;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.1em;
+  margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem;
+}
+.section-lbl::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── STATION CARD ── */
+.station-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:1rem 1.1rem;
+  margin-bottom:.7rem;cursor:pointer;
+  transition:border-color .2s,transform .15s,box-shadow .2s;
+  position:relative;overflow:hidden;
+}
+.station-card::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  border-radius:3px 0 0 3px;
+}
+.station-card.green::before{background:var(--green)}
+.station-card.amber::before{background:var(--amber)}
+.station-card.red::before{background:var(--red)}
+.station-card:hover{border-color:var(--blue);transform:translateX(3px);
+  box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.station-card.selected{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-glow)}
+
+.sc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.55rem}
+.sc-name{font-weight:600;font-size:.88rem;line-height:1.3}
+.sc-dist{font-family:var(--mono);font-size:.68rem;color:var(--muted);
+         display:flex;align-items:center;gap:.3rem;white-space:nowrap;margin-left:.5rem}
+.sc-avail{display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dot.green{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot.amber{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.dot.red{background:var(--red);box-shadow:0 0 6px var(--red)}
+.avail-text{font-size:.78rem;color:var(--text);font-weight:500}
+.wait-text{font-size:.7rem;color:var(--muted);margin-left:auto}
+
+.sc-meta{display:flex;gap:.85rem;font-size:.7rem;color:var(--muted);margin-bottom:.6rem}
+.sc-meta span{display:flex;align-items:center;gap:.3rem}
+
+.demand-bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:.6rem}
+.demand-fill{height:100%;border-radius:2px;transition:width .4s ease}
+.demand-fill.green{background:var(--green)}
+.demand-fill.amber{background:var(--amber)}
+.demand-fill.red{background:var(--red)}
+
+.sc-actions{display:flex;gap:.5rem}
+.sc-btn{flex:1;padding:.4rem;border-radius:8px;font-size:.73rem;font-weight:500;
+  cursor:pointer;border:none;font-family:var(--body);transition:all .15s}
+.sc-btn-primary{background:var(--blue);color:#fff}
+.sc-btn-primary:hover{filter:brightness(1.1)}
+.sc-btn-sec{background:var(--card);color:var(--muted);border:1px solid var(--border)}
+.sc-btn-sec:hover{border-color:var(--blue);color:var(--blue)}
+
+/* ── HGNN BADGE ── */
+.hgnn-badge{
+  display:inline-flex;align-items:center;gap:.3rem;
+  background:rgba(79,158,255,.12);border:1px solid rgba(79,158,255,.3);
+  border-radius:6px;padding:.12rem .45rem;font-size:.62rem;
+  font-family:var(--mono);color:var(--blue);margin-bottom:.55rem;
+}
+
+/* ── DETAIL PANEL ── */
+#detail{
+  position:absolute;bottom:0;left:0;right:0;
+  background:var(--surface);border-top:1px solid var(--border);
+  border-radius:20px 20px 0 0;padding:0;
+  transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);
+  z-index:20;max-height:70vh;overflow-y:auto;
+}
+#detail.open{transform:translateY(0)}
+.detail-drag{width:36px;height:4px;background:var(--dim);border-radius:2px;
+  margin:1rem auto .5rem;cursor:grab}
+.detail-inner{padding:0 1.4rem 1.4rem}
+.detail-header{display:flex;justify-content:space-between;align-items:flex-start;
+  margin-bottom:1rem;padding-top:.5rem}
+.detail-name{font-size:1.05rem;font-weight:700;line-height:1.3}
+.detail-close{background:var(--card);border:1px solid var(--border);
+  color:var(--muted);width:30px;height:30px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  font-size:.8rem;flex-shrink:0;border:none}
+.detail-close:hover{color:var(--text)}
+
+.detail-chips{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.chip{display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .65rem;
+  border-radius:6px;font-size:.7rem;font-family:var(--mono)}
+.chip-green{background:var(--green-glow);color:var(--green);border:1px solid rgba(34,212,106,.3)}
+.chip-amber{background:var(--amber-glow);color:var(--amber);border:1px solid rgba(245,166,35,.3)}
+.chip-red{background:var(--red-glow);color:var(--red);border:1px solid rgba(255,79,109,.3)}
+.chip-blue{background:var(--blue-glow);color:var(--blue);border:1px solid rgba(79,158,255,.3)}
+.chip-purple{background:rgba(167,139,250,.12);color:var(--purple);border:1px solid rgba(167,139,250,.3)}
+
+.detail-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.7rem;margin-bottom:1rem}
+.dstat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.75rem}
+.dstat-lbl{font-size:.6rem;color:var(--muted);font-family:var(--mono);
+  text-transform:uppercase;margin-bottom:.3rem}
+.dstat-val{font-size:1.1rem;font-weight:600;font-family:var(--mono)}
+
+/* ── FORECAST CHART ── */
+.forecast-title{font-size:.78rem;font-weight:600;color:var(--muted);
+  margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem}
+.forecast-bars{display:flex;gap:.4rem;align-items:flex-end;height:60px;margin-bottom:.3rem}
+.bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:.3rem}
+.bar{width:100%;border-radius:4px 4px 0 0;transition:height .5s ease;min-height:4px}
+.bar.green{background:var(--green)}
+.bar.amber{background:var(--amber)}
+.bar.red{background:var(--red)}
+.bar-lbl{font-size:.55rem;color:var(--muted);font-family:var(--mono)}
+.bar-val{font-size:.6rem;color:var(--text);font-family:var(--mono)}
+
+/* ── ROUTE BUTTON ── */
+.route-btn{
+  width:100%;background:linear-gradient(135deg,var(--green),#16a34a);
+  border:none;border-radius:var(--radius-sm);padding:.82rem;
+  color:#fff;font-size:.9rem;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:.6rem;
+  font-family:var(--body);transition:all .2s;
+  box-shadow:0 4px 15px rgba(34,212,106,.25);
+}
+.route-btn:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.route-btn:active{transform:none}
+
+/* ── MAP CONTROLS ── */
+.map-controls{position:absolute;top:1rem;right:1rem;z-index:5;display:flex;flex-direction:column;gap:.5rem}
+.map-btn{width:38px;height:38px;background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--text);font-size:.95rem;transition:all .15s}
+.map-btn:hover{border-color:var(--blue);color:var(--blue)}
+
+/* ── STATUS BAR ── */
+#status-bar{
+  position:absolute;bottom:1rem;left:50%;transform:translateX(-50%);
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:20px;padding:.45rem 1rem;font-size:.75rem;
+  font-family:var(--mono);color:var(--muted);z-index:5;
+  display:flex;align-items:center;gap:.5rem;
+  backdrop-filter:blur(10px);white-space:nowrap;
+  max-width:calc(100vw - var(--panel-w) - 2rem);
+  transition:opacity .3s;
+}
+#status-bar.hidden{opacity:0;pointer-events:none}
+#sb-dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+#sb-dot.searching{background:var(--amber);animation:pulse .8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* ── LOADING OVERLAY ── */
+#loading{
+  position:fixed;inset:0;background:var(--bg);z-index:1000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5rem;
+  transition:opacity .5s;
+}
+#loading.done{opacity:0;pointer-events:none}
+.loader-ring{width:48px;height:48px;border:3px solid var(--border);
+  border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+.loader-text{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+
+/* ── EMPTY STATE ── */
+.empty-state{text-align:center;padding:2.5rem 1rem;color:var(--muted)}
+.empty-state .icon{font-size:2.5rem;margin-bottom:.75rem;opacity:.4}
+.empty-state p{font-size:.82rem;line-height:1.6}
+
+/* ── MOBILE: panel slides over map ── */
+#panel-toggle{
+  display:none;position:absolute;bottom:5.5rem;right:1rem;z-index:20;
+  width:50px;height:50px;background:var(--blue);border-radius:50%;
+  border:none;color:#fff;font-size:1.3rem;cursor:pointer;
+  box-shadow:0 4px 20px rgba(79,158,255,.4);
+  align-items:center;justify-content:center;
+}
+@media(max-width:720px){
+  #panel{position:absolute;left:0;top:0;bottom:0;z-index:30;
+    transform:translateX(-100%);width:min(var(--panel-w),100vw)}
+  #panel.mobile-open{transform:translateX(0)}
+  #panel-toggle{display:flex}
+  #status-bar{max-width:calc(100vw - 2rem);left:1rem;transform:none}
+  .map-controls{top:.6rem;right:.6rem}
+}
+
+/* ── LEAFLET OVERRIDES ── */
+.leaflet-container{background:var(--bg)!important}
+.leaflet-popup-content-wrapper{background:var(--card);color:var(--text);
+  border:1px solid var(--border);border-radius:var(--radius-sm);box-shadow:none}
+.leaflet-popup-tip{background:var(--card)}
+.leaflet-popup-content{margin:12px 16px;font-family:var(--body);font-size:.82rem}
+.leaflet-routing-container{display:none!important}
+
+/* ── CUSTOM MARKER ── */
+.custom-marker{display:flex;flex-direction:column;align-items:center;cursor:pointer}
+.marker-pin{width:36px;height:36px;border-radius:50% 50% 50% 0;
+  transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;
+  box-shadow:0 3px 12px rgba(0,0,0,.4);border:2px solid rgba(255,255,255,.2);
+  transition:transform .2s}
+.marker-pin.green{background:var(--green)}
+.marker-pin.amber{background:var(--amber)}
+.marker-pin.red{background:var(--red)}
+.marker-pin span{transform:rotate(45deg);font-size:.8rem}
+.user-marker{width:16px;height:16px;border-radius:50%;
+  background:var(--blue);border:3px solid #fff;
+  box-shadow:0 0 0 4px rgba(79,158,255,.3)}
+</style>
+</head>
+<body>
+<div id="loading">
+  <div class="loader-ring"></div>
+  <div class="loader-text">Loading ChargePath…</div>
+</div>
+
+<div id="app">
+  <!-- ── LEFT PANEL ── -->
+  <div id="panel">
+    <div class="panel-header">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <div class="brand-name">ChargePath</div>
+          <div class="brand-sub">ST-HGNN Powered · 127 stations</div>
+        </div>
+      </div>
+
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input class="search-input" id="search-input" type="text"
+               placeholder="Search station or address…"
+               oninput="filterStations(this.value)">
+      </div>
+
+      <button class="locate-btn" id="locate-btn" onclick="locateUser()">
+        <span class="loc-icon">📍</span>
+        <span class="spin">↻</span>
+        Find Nearby Charging Stations
+      </button>
+
+      <div class="filters">
+        <div class="filter-chip active" onclick="toggleFilter('all',this)">All</div>
+        <div class="filter-chip green" onclick="toggleFilter('green',this)">🟢 Available</div>
+        <div class="filter-chip amber" onclick="toggleFilter('amber',this)">🟡 Busy</div>
+        <div class="filter-chip red"   onclick="toggleFilter('red',this)">🔴 Full</div>
+        <div class="filter-chip" onclick="toggleFilter('acn',this)">ACN</div>
+        <div class="filter-chip" onclick="toggleFilter('palo_alto',this)">Palo Alto</div>
+        <div class="filter-chip" onclick="toggleFilter('boulder',this)">Boulder</div>
+        <div class="filter-chip" onclick="toggleFilter('synthetic_chicago',this)">Chicago</div>
+      </div>
+    </div>
+
+    <div class="panel-body" id="panel-body">
+      <div class="section-lbl" id="list-label">Loading stations…</div>
+      <div id="station-list">
+        <div class="empty-state">
+          <div class="icon">⚡</div>
+          <p>Press "Find Nearby Charging Stations" to discover stations near you,<br>
+             ranked by the ST-HGNN demand forecast.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MAP ── -->
+  <div id="map"></div>
+
+  <!-- ── MAP CONTROLS ── -->
+  <div class="map-controls">
+    <div class="map-btn" onclick="resetView()" title="Reset view">🗺</div>
+    <div class="map-btn" onclick="toggleLayer()" title="Toggle demand layer">📊</div>
+    <div class="map-btn" id="refresh-btn" onclick="loadAllStations()" title="Refresh">↻</div>
+  </div>
+
+  <!-- ── STATUS BAR ── -->
+  <div id="status-bar">
+    <div id="sb-dot"></div>
+    <span id="sb-txt">Ready</span>
+  </div>
+
+  <!-- ── MOBILE TOGGLE ── -->
+  <button id="panel-toggle" onclick="togglePanel()">☰</button>
+
+  <!-- ── DETAIL DRAWER ── -->
+  <div id="detail">
+    <div class="detail-drag"></div>
+    <div class="detail-inner" id="detail-inner"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+let map, userMarker, userLatLng=null;
+let allStations=[], filteredStations=[], markers={};
+let activeFilter='all', routeControl=null, selectedId=null;
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async ()=>{
+  initMap();
+  await loadAllStations();
+  document.getElementById('loading').classList.add('done');
+  setTimeout(()=>document.getElementById('loading').remove(), 600);
+  if(navigator.geolocation) tryAutoLocate();
+});
+
+function initMap(){
+  map = L.map('map',{
+    center:[37.0,-95.0], zoom:4,
+    zoomControl:false,
+  });
+
+  // Dark tile layer (OpenStreetMap with dark style via CDN)
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains:'abcd', maxZoom:20
+  }).addTo(map);
+
+  map.on('click', ()=>closeDetail());
+}
+
+// ── LOAD STATIONS ──────────────────────────────────────────────────────────
+async function loadAllStations(){
+  setStatus('Loading stations…', true);
+  document.getElementById('refresh-btn').style.opacity='0.4';
+  try{
+    const d = await fetch('/api/stations/all').then(r=>r.json());
+    if(d.error){ setStatus('Error: '+d.error); return; }
+    allStations = d.stations;
+    renderMarkers(allStations);
+    applyFilter(activeFilter);
+    setStatus(`${allStations.length} stations loaded`);
+
+    // Fit map to stations
+    if(allStations.length>0){
+      const lats=allStations.map(s=>s.lat), lngs=allStations.map(s=>s.lng);
+      map.fitBounds([[Math.min(...lats),Math.min(...lngs)],
+                     [Math.max(...lats),Math.max(...lngs)]],{padding:[40,40]});
+    }
+  } catch(e){ setStatus('Network error'); }
+  document.getElementById('refresh-btn').style.opacity='1';
+}
+
+// ── MARKERS ────────────────────────────────────────────────────────────────
+function makeIcon(station){
+  const c=station.demand_color;
+  const emoji = c==='green'?'⚡':c==='amber'?'⚡':'🔴';
+  return L.divIcon({
+    className:'',
+    html:`<div class="custom-marker">
+      <div class="marker-pin ${c}"><span>${emoji}</span></div>
+    </div>`,
+    iconSize:[36,44], iconAnchor:[18,44], popupAnchor:[0,-44]
+  });
+}
+
+function renderMarkers(stations){
+  // Remove old
+  Object.values(markers).forEach(m=>m.remove());
+  markers={};
+  stations.forEach(s=>{
+    const m=L.marker([s.lat,s.lng],{icon:makeIcon(s)})
+      .addTo(map)
+      .on('click',()=>selectStation(s.id));
+    markers[s.id]=m;
+  });
+}
+
+// ── LOCATE USER ────────────────────────────────────────────────────────────
+function tryAutoLocate(){
+  navigator.geolocation.getCurrentPosition(
+    pos=>{ userLatLng={lat:pos.coords.latitude,lng:pos.coords.longitude}; placeUserMarker(); },
+    ()=>{}, {timeout:5000});
+}
+
+async function locateUser(){
+  const btn=document.getElementById('locate-btn');
+  btn.classList.add('loading'); btn.disabled=true;
+  setStatus('Getting your location…', true);
+
+  if(!navigator.geolocation){
+    setStatus('Geolocation not supported'); btn.classList.remove('loading'); btn.disabled=false; return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async pos=>{
+      userLatLng={lat:pos.coords.latitude,lng:pos.coords.longitude};
+      placeUserMarker();
+      map.setView([userLatLng.lat,userLatLng.lng],13);
+      await findNearby(userLatLng.lat,userLatLng.lng);
+      btn.classList.remove('loading'); btn.disabled=false;
+    },
+    err=>{
+      setStatus('Location denied — showing all stations');
+      btn.classList.remove('loading'); btn.disabled=false;
+    },
+    {timeout:10000, enableHighAccuracy:true}
+  );
+}
+
+function placeUserMarker(){
+  if(userMarker) userMarker.remove();
+  userMarker=L.marker([userLatLng.lat,userLatLng.lng],{
+    icon:L.divIcon({className:'',html:'<div class="user-marker"></div>',
+                    iconSize:[16,16],iconAnchor:[8,8]})
+  }).addTo(map).bindPopup('📍 You are here');
+}
+
+// ── FIND NEARBY (HGNN-ranked) ──────────────────────────────────────────────
+async function findNearby(lat,lng,radius=15){
+  setStatus('Running ST-HGNN ranking…', true);
+  try{
+    const d=await fetch(`/api/stations/nearby?lat=${lat}&lng=${lng}&radius_km=${radius}&limit=10`)
+      .then(r=>r.json());
+    if(d.error){ setStatus('Error: '+d.error); return; }
+    if(d.stations.length===0){
+      setStatus(`No stations within ${radius} km`);
+      showEmptyList(`No stations found within ${radius} km. Try increasing the search radius.`);
+      return;
+    }
+    const label = d.model_active
+      ? `${d.stations.length} stations — ST-HGNN ranked`
+      : `${d.stations.length} stations nearby (train model for HGNN ranking)`;
+    renderList(d.stations, label);
+    setStatus(label);
+
+    // Pulse nearby markers
+    d.stations.forEach(s=>{
+      if(markers[s.id]) markers[s.id].openPopup();
+    });
+  } catch(e){ setStatus('Network error'); }
+}
+
+// ── STATION LIST ───────────────────────────────────────────────────────────
+function renderList(stations, label='Stations'){
+  document.getElementById('list-label').textContent=label;
+  const list=document.getElementById('station-list');
+  if(!stations.length){
+    list.innerHTML='<div class="empty-state"><div class="icon">🔌</div><p>No stations match your filter.</p></div>';
+    return;
+  }
+  list.innerHTML=stations.map((s,i)=>`
+    <div class="station-card ${s.demand_color}" id="card-${s.id}"
+         onclick="selectStation('${s.id}')">
+      <div class="sc-top">
+        <div class="sc-name">${s.id}</div>
+        <div class="sc-dist">
+          ${s.distance_km!=null?`📍 ${s.distance_km} km`:''}
+          ${s.drive_min!=null?`· ~${s.drive_min} min`:''}
+        </div>
+      </div>
+      <div class="hgnn-badge">⚡ HGNN ${s.hgnn_score!=null?`score: ${s.hgnn_score}`:'demand forecast'}</div>
+      <div class="sc-avail">
+        <div class="dot ${s.demand_color}"></div>
+        <span class="avail-text">${s.availability}</span>
+        <span class="wait-text">${s.wait}</span>
+      </div>
+      <div class="sc-meta">
+        <span>📊 ${s.demand_label}</span>
+        <span>⏱ avg ${s.avg_duration.toFixed(1)}h</span>
+        <span>🏷 ${s.source}</span>
+      </div>
+      <div class="demand-bar">
+        <div class="demand-fill ${s.demand_color}"
+             style="width:${Math.min(100,(s.avg_kwh/25)*100).toFixed(0)}%"></div>
+      </div>
+      <div class="sc-actions">
+        <button class="sc-btn sc-btn-primary" onclick="event.stopPropagation();routeTo('${s.id}')">🗺 Route</button>
+        <button class="sc-btn sc-btn-sec"     onclick="event.stopPropagation();showDetail('${s.id}')">Details</button>
+      </div>
+    </div>`).join('');
+}
+
+function filterStations(q){
+  if(!q){ applyFilter(activeFilter); return; }
+  const low=q.toLowerCase();
+  const f=allStations.filter(s=>
+    s.id.toLowerCase().includes(low)||
+    s.site.toLowerCase().includes(low)||
+    s.source.toLowerCase().includes(low));
+  renderList(f, `${f.length} results for "${q}"`);
+}
+
+function toggleFilter(name, el){
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active'); activeFilter=name;
+  applyFilter(name);
+}
+
+function applyFilter(name){
+  let f=allStations;
+  if(name==='all'){}
+  else if(['green','amber','red'].includes(name)) f=allStations.filter(s=>s.demand_color===name);
+  else f=allStations.filter(s=>s.source===name);
+  filteredStations=f;
+  renderMarkers(f);
+  renderList(f, `${f.length} stations${name!=='all'?' (filtered)':''}`);
+}
+
+// ── SELECT STATION ─────────────────────────────────────────────────────────
+function selectStation(id){
+  selectedId=id;
+  document.querySelectorAll('.station-card').forEach(c=>c.classList.remove('selected'));
+  const card=document.getElementById('card-'+id);
+  if(card){ card.classList.add('selected'); card.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+  const s=allStations.find(x=>x.id===id);
+  if(s){ map.setView([s.lat,s.lng],15); }
+  showDetail(id);
+}
+
+// ── DETAIL DRAWER ──────────────────────────────────────────────────────────
+async function showDetail(id){
+  const s=allStations.find(x=>x.id===id)||{id,lat:0,lng:0};
+  const fc=s.forecast||[10,10,10,10,10,10];
+  const maxFc=Math.max(...fc,1);
+  const colorClass={'green':'chip-green','amber':'chip-amber','red':'chip-red'}[s.demand_color]||'chip-blue';
+
+  // Fetch live HGNN prediction
+  let liveFC=fc;
+  try{
+    const live=await fetch(`/api/hgnn/predict/${encodeURIComponent(id)}`).then(r=>r.json());
+    if(!live.error) liveFC=live.medium_pred||fc;
+  } catch(e){}
+
+  const maxLive=Math.max(...liveFC,1);
+  const bars=liveFC.map((v,i)=>{
+    const pct=Math.round((v/maxLive)*100);
+    const h=Math.max(4,Math.round((v/maxLive)*52));
+    const c=v<8?'green':v<18?'amber':'red';
+    return `<div class="bar-wrap">
+      <div class="bar-val">${v.toFixed(1)}</div>
+      <div class="bar ${c}" style="height:${h}px"></div>
+      <div class="bar-lbl">t+${i+1}h</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('detail-inner').innerHTML=`
+    <div class="detail-header">
+      <div>
+        <div class="detail-name">${s.id||id}</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:.2rem">${s.site||''} · ${s.source||''}</div>
+      </div>
+      <button class="detail-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="detail-chips">
+      <span class="chip ${colorClass}">${s.availability||'—'}</span>
+      <span class="chip chip-blue">⚡ ST-HGNN Forecast</span>
+      ${s.wait?`<span class="chip chip-purple">⏱ ${s.wait}</span>`:''}
+      ${s.distance_km!=null?`<span class="chip chip-blue">📍 ${s.distance_km} km</span>`:''}
+    </div>
+    <div class="detail-stats">
+      <div class="dstat">
+        <div class="dstat-lbl">Avg demand</div>
+        <div class="dstat-val ${s.demand_color}">${s.avg_kwh!=null?s.avg_kwh.toFixed(1):liveFC[0].toFixed(1)}</div>
+        <div style="font-size:.6rem;color:var(--muted)">kWh</div>
+      </div>
+      <div class="dstat">
+        <div class="dstat-lbl">Sessions</div>
+        <div class="dstat-val blue">${s.sessions!=null?s.sessions.toLocaleString():'—'}</div>
+      </div>
+      <div class="dstat">
+        <div class="dstat-lbl">Peak hour</div>
+        <div class="dstat-val">${s.peak_hour!=null?s.peak_hour+':00':'—'}</div>
+      </div>
+    </div>
+    <div class="forecast-title">
+      <span>🧠 ST-HGNN Demand Forecast (next 6h)</span>
+    </div>
+    <div class="forecast-bars">${bars}</div>
+    <div style="font-size:.65rem;color:var(--muted);margin-bottom:1rem;font-family:var(--mono)">
+      Live HGNN prediction · kWh per hour
+    </div>
+    <button class="route-btn" onclick="routeTo('${id}')">
+      🗺 &nbsp;Get Directions
+    </button>
+  `;
+  document.getElementById('detail').classList.add('open');
+}
+
+function closeDetail(){
+  document.getElementById('detail').classList.remove('open');
+  selectedId=null;
+}
+
+// ── ROUTING (Leaflet Routing Machine) ─────────────────────────────────────
+function routeTo(stationId){
+  const s=allStations.find(x=>x.id===stationId);
+  if(!s){ alert('Station not found'); return; }
+  if(!userLatLng){
+    // Ask for location
+    navigator.geolocation.getCurrentPosition(pos=>{
+      userLatLng={lat:pos.coords.latitude,lng:pos.coords.longitude};
+      placeUserMarker(); buildRoute(s);
+    }, ()=>alert('Please allow location access to get directions.'));
+    return;
+  }
+  buildRoute(s);
+}
+
+function buildRoute(station){
+  if(routeControl) { routeControl.remove(); routeControl=null; }
+  setStatus('Calculating route…', true);
+  map.setView([(userLatLng.lat+station.lat)/2,(userLatLng.lng+station.lng)/2],12);
+
+  routeControl=L.Routing.control({
+    waypoints:[
+      L.latLng(userLatLng.lat,userLatLng.lng),
+      L.latLng(station.lat,station.lng)
+    ],
+    lineOptions:{styles:[{color:getComputedStyle(document.documentElement)
+      .getPropertyValue('--blue').trim()||'#4f9eff',weight:4,opacity:.85}]},
+    createMarker:()=>null,
+    addWaypoints:false, draggableWaypoints:false, fitSelectedRoutes:true,
+    router:new L.Routing.OSRMv1({serviceUrl:'https://router.project-osrm.org/route/v1'}),
+    show:false
+  }).addTo(map);
+
+  routeControl.on('routesfound',e=>{
+    const s=e.routes[0].summary;
+    const dist=(s.totalDistance/1000).toFixed(1);
+    const mins=Math.round(s.totalTime/60);
+    setStatus(`Route: ${dist} km · ${mins} min drive`);
+  });
+  routeControl.on('routingerror',()=>setStatus('Route unavailable (offline routing)'));
+}
+
+// ── UI HELPERS ─────────────────────────────────────────────────────────────
+function resetView(){
+  if(allStations.length>0){
+    const lats=allStations.map(s=>s.lat), lngs=allStations.map(s=>s.lng);
+    map.fitBounds([[Math.min(...lats),Math.min(...lngs)],
+                   [Math.max(...lats),Math.max(...lngs)]],{padding:[40,40]});
+  }
+  if(routeControl){ routeControl.remove(); routeControl=null; }
+}
+
+let demandLayer=true;
+function toggleLayer(){
+  demandLayer=!demandLayer;
+  Object.values(markers).forEach(m=>{
+    if(demandLayer) m.addTo(map); else m.remove();
+  });
+}
+
+function togglePanel(){
+  document.getElementById('panel').classList.toggle('mobile-open');
+}
+
+function setStatus(msg, searching=false){
+  document.getElementById('sb-txt').textContent=msg;
+  document.getElementById('sb-dot').className=searching?'searching':'';
+}
+
+function showEmptyList(msg){
+  document.getElementById('station-list').innerHTML=
+    `<div class="empty-state"><div class="icon">🔌</div><p>${msg}</p></div>`;
+}
+
+// ── SERVICE WORKER (PWA offline) ───────────────────────────────────────────
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Large data files - DO NOT commit raw data CSVs
+data/weather_cache/*.csv
+
+# Results figures (regenerated after training)
+results/figures/*.png
+
+# Training history (regenerated)
+results/training_history.json
+
+# ── IMPORTANT: DO commit these for Railway ──────────────────────────────────
+# Checkpoints are committed so Railway never needs to retrain
+# Uncomment the lines below ONLY if you want to exclude them (not recommended)
+# checkpoints/
+# checkpoints/*.pth
+# checkpoints/trained.lock
+# checkpoints/auto_results.json
+
+# The acndata JSON is needed for inference - keep it
+# data/acndata_sessions.json  <-- DO NOT ignore this

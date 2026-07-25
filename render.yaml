@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: chargepath-ev-ai
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /api/status
+    envVars:
+      - key: PORT
+        value: 5000
+    disk:
+      name: chargepath-data
+      mountPath: /app/checkpoints
+      sizeGB: 1

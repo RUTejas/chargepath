@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#050810">
+<link rel="manifest" href="/manifest.json">
+<title>ChargePath — Research Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#050810;--s1:#0c1220;--s2:#111827;--s3:#1a2235;
+  --border:#1e2d45;--border2:#243350;
+  --blue:#4f9eff;--blue2:#2563eb;--cyan:#22d3ee;
+  --green:#22d46a;--amber:#f5a623;--red:#ff4f6d;--purple:#a78bfa;
+  --text:#dde6f5;--muted:#5a7090;--dim:#2a3a55;
+  --mono:'JetBrains Mono',monospace;
+  --body:'Syne',sans-serif;
+  --r:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh;overflow-x:hidden}
+
+/* ── NAV ── */
+nav{position:sticky;top:0;z-index:100;
+    background:rgba(5,8,16,.9);backdrop-filter:blur(20px);
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 2rem;height:56px}
+.nav-l{display:flex;align-items:center;gap:1rem}
+.logo{width:30px;height:30px;background:linear-gradient(135deg,var(--blue),var(--cyan));
+      border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.9rem}
+.nav-title{font-size:.9rem;font-weight:700;letter-spacing:-.02em}
+.nav-sub{font-size:.62rem;color:var(--muted);font-family:var(--mono)}
+.nav-r{display:flex;align-items:center;gap:.75rem}
+.map-link{background:var(--blue);color:#fff;border:none;border-radius:8px;
+  padding:.38rem .9rem;font-size:.75rem;font-weight:600;cursor:pointer;
+  font-family:var(--body);text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;
+  transition:filter .2s}
+.map-link:hover{filter:brightness(1.12)}
+.status-pill{display:flex;align-items:center;gap:.45rem;background:var(--s2);
+  border:1px solid var(--border);border-radius:20px;padding:.3rem .8rem;font-size:.7rem;font-family:var(--mono)}
+#sdot{width:7px;height:7px;border-radius:50%;background:var(--dim);transition:background .3s}
+#sdot.training,#sdot.loading{background:var(--amber);animation:pulse .8s infinite}
+#sdot.ready{background:var(--green)}
+#sdot.error{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.15}}
+
+/* ── PROGRESS BAR (top of page) ── */
+#top-progress{height:2px;background:var(--border);position:fixed;top:56px;left:0;right:0;z-index:99;
+  display:none}
+#top-progress.show{display:block}
+#top-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));
+  width:0%;transition:width .6s ease}
+
+/* ── HERO ── */
+.hero{padding:3.5rem 2rem 2.5rem;max-width:1400px;margin:0 auto}
+.eyebrow{font-family:var(--mono);font-size:.6rem;color:var(--cyan);
+  letter-spacing:.15em;text-transform:uppercase;margin-bottom:.9rem;
+  display:flex;align-items:center;gap:.75rem}
+.eyebrow::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent);max-width:160px}
+h1{font-size:clamp(2rem,5vw,3.5rem);font-weight:800;line-height:1.08;margin-bottom:.9rem;letter-spacing:-.03em}
+h1 .hl{color:var(--blue)}
+.sub{color:var(--muted);max-width:58ch;line-height:1.7;font-size:.88rem}
+
+/* ── AUTO STATUS BANNER ── */
+.auto-banner{
+  display:flex;align-items:center;gap:1rem;
+  background:var(--s1);border:1px solid var(--border2);
+  border-radius:var(--r);padding:1rem 1.4rem;margin-top:1.5rem;
+  max-width:640px;
+}
+.auto-icon{font-size:1.4rem;flex-shrink:0}
+.auto-text h4{font-size:.85rem;font-weight:600;margin-bottom:.2rem}
+.auto-text p{font-size:.75rem;color:var(--muted);line-height:1.5}
+.auto-prog{margin-top:.6rem;background:var(--border);border-radius:2px;height:4px}
+.auto-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));
+  border-radius:2px;transition:width .5s ease;width:0%}
+
+/* ── WRAP ── */
+.wrap{max-width:1400px;margin:0 auto;padding:0 2rem 5rem}
+
+/* ── SEC LABEL ── */
+.sec{font-family:var(--mono);font-size:.58rem;color:var(--muted);
+  letter-spacing:.13em;text-transform:uppercase;
+  margin-bottom:1.1rem;padding-bottom:.5rem;
+  border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.75rem}
+.sec::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── STAT CARDS ── */
+.g4{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.8rem;margin-bottom:2rem}
+.stat{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
+  padding:1.2rem 1.4rem;position:relative;overflow:hidden}
+.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--blue),transparent)}
+.stat-lbl{font-size:.62rem;color:var(--muted);font-family:var(--mono);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:.4rem}
+.stat-val{font-family:var(--mono);font-size:1.7rem;font-weight:600;line-height:1}
+.stat-sub{font-size:.67rem;color:var(--muted);margin-top:.35rem}
+.blue{color:var(--blue)}.green{color:var(--green)}.amber{color:var(--amber)}
+.cyan{color:var(--cyan)}.purple{color:var(--purple)}
+
+/* ── DATASET PILLS ── */
+.dpills{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:2rem}
+.dpill{background:var(--s2);border:1px solid var(--border);border-radius:20px;
+  padding:.28rem .85rem;font-size:.68rem;font-family:var(--mono);color:var(--cyan)}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:0;margin-bottom:1.5rem;border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{padding:.55rem 1.1rem;font-size:.78rem;cursor:pointer;
+  border-bottom:2px solid transparent;color:var(--muted);
+  transition:all .15s;margin-bottom:-1px;white-space:nowrap;font-weight:500}
+.tab.on{color:var(--blue);border-bottom-color:var(--blue)}
+.tab:hover:not(.on){color:var(--text)}
+
+/* ── CHART CARDS ── */
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:.9rem;margin-bottom:1.2rem}
+.ccrd{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:1.4rem}
+.ccrd h3{font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:1.1rem;font-family:var(--mono)}
+.ccrd canvas{max-height:230px}
+
+/* ── TABLE ── */
+.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
+.tbl th{text-align:left;padding:.5rem .8rem;color:var(--muted);font-weight:500;
+  border-bottom:1px solid var(--border);font-family:var(--mono);font-size:.6rem;white-space:nowrap}
+.tbl td{padding:.6rem .8rem;border-bottom:1px solid var(--border)}
+.tbl tr:last-child td{border:none}
+.tbl tr:hover td{background:rgba(79,158,255,.04)}
+
+/* ── BADGE ── */
+.badge{display:inline-flex;align-items:center;padding:.1rem .5rem;
+  border-radius:5px;font-size:.62rem;font-family:var(--mono)}
+.b-blue{background:rgba(79,158,255,.14);color:var(--blue)}
+.b-green{background:rgba(34,212,106,.14);color:var(--green)}
+.b-amber{background:rgba(245,166,35,.14);color:var(--amber)}
+.b-red{background:rgba(255,79,109,.14);color:var(--red)}
+.b-purple{background:rgba(167,139,250,.14);color:var(--purple)}
+.b-cyan{background:rgba(34,211,238,.14);color:var(--cyan)}
+
+/* ── PROB ROW ── */
+.prob-row{display:flex;gap:1.5rem;flex-wrap:wrap;
+  background:var(--s2);border:1px solid var(--border2);
+  border-radius:var(--r);padding:1rem 1.4rem;margin-bottom:1.2rem}
+.prob-item label{display:block;font-family:var(--mono);font-size:.58rem;
+  color:var(--muted);text-transform:uppercase;margin-bottom:.3rem}
+.prob-item span{font-family:var(--mono);font-size:1.4rem;font-weight:600;color:var(--cyan)}
+
+/* ── DECISION CARDS ── */
+.dcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));
+  gap:.8rem;margin-bottom:1.5rem}
+.dc{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
+  padding:1rem 1.1rem;position:relative;overflow:hidden}
+.dc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.dc.CHARGE_HERE::before{background:var(--green)}
+.dc.REDIRECT::before{background:var(--amber)}
+.dc.HOME_CHARGE::before{background:var(--blue)}
+.dc.DELAY::before{background:var(--purple)}
+.dc-top{display:flex;justify-content:space-between;margin-bottom:.6rem}
+.dc-sid{font-family:var(--mono);font-size:.7rem;color:var(--cyan)}
+.dc-reason{font-size:.72rem;color:var(--muted);line-height:1.55;margin-bottom:.6rem}
+.conf-bar{height:2px;background:var(--border);border-radius:1px;margin-top:.5rem}
+.conf-fill{height:100%;background:var(--green);border-radius:1px}
+.dc-meta{font-size:.6rem;color:var(--dim);margin-top:.35rem}
+
+/* ── FIGURES ── */
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));
+  gap:1rem;margin-bottom:1.5rem}
+.fig{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);
+  overflow:hidden;cursor:pointer;transition:transform .15s,border-color .15s}
+.fig:hover{transform:translateY(-2px);border-color:var(--blue)}
+.fig img{width:100%;display:block}
+.fig-cap{padding:.55rem 1rem;font-size:.65rem;color:var(--muted);font-family:var(--mono)}
+
+/* ── LIGHTBOX ── */
+.lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);
+  z-index:999;align-items:center;justify-content:center}
+.lb.open{display:flex}
+.lb img{max-width:92vw;max-height:92vh;border-radius:10px}
+.lb-x{position:fixed;top:1.2rem;right:1.2rem;background:var(--s2);
+  border:1px solid var(--border);color:var(--text);width:32px;height:32px;
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:.85rem}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:3rem 1rem;color:var(--muted);font-size:.8rem;font-family:var(--mono)}
+
+/* ── PLACEHOLDER SKELETON ── */
+.skel{background:linear-gradient(90deg,var(--s2) 25%,var(--s3) 50%,var(--s2) 75%);
+  background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px;height:18px;margin:4px 0}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+@media(max-width:640px){
+  h1{font-size:1.9rem}.g4{grid-template-columns:1fr 1fr}
+  .fgrid,.g2{grid-template-columns:1fr}.wrap,.hero{padding-left:1rem;padding-right:1rem}
+}
+</style>
+</head>
+<body>
+<nav>
+  <div class="nav-l">
+    <div class="logo">⚡</div>
+    <div>
+      <div class="nav-title">ChargePath AI</div>
+      <div class="nav-sub">ST-HGNN v2 · Q1 Research System</div>
+    </div>
+  </div>
+  <div class="nav-r">
+    <a href="/map" class="map-link">🗺 Open Map App</a>
+    <div class="status-pill">
+      <div id="sdot"></div>
+      <span id="stxt">Starting…</span>
+    </div>
+  </div>
+</nav>
+
+<!-- top progress bar -->
+<div id="top-progress"><div id="top-fill"></div></div>
+
+<div class="hero">
+  <div class="eyebrow">Spatio-Temporal Hypergraph Neural Network v2</div>
+  <h1>EV Charging Demand<br>Forecasting &amp; <span class="hl">Smart AI</span></h1>
+  <p class="sub">Results load automatically — no buttons needed. 
+    89,976 sessions · 127 stations · 4 datasets · 31 features · 5 models.
+    Training runs once and saves to disk permanently.</p>
+  <div class="auto-banner" id="auto-banner">
+    <div class="auto-icon" id="auto-icon">⚙️</div>
+    <div style="flex:1">
+      <div class="auto-text">
+        <h4 id="auto-h">Initialising…</h4>
+        <p id="auto-p">Loading datasets, weather features and hypergraph.</p>
+      </div>
+      <div class="auto-prog"><div class="auto-fill" id="auto-fill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- Dataset pills -->
+  <div class="dpills">
+    <span class="dpill">📡 ACN-Data (real, 15,976 sessions)</span>
+    <span class="dpill">🏙 Palo Alto replica (36,000)</span>
+    <span class="dpill">🏔 Boulder CO replica (28,000)</span>
+    <span class="dpill">🔬 Synthetic Chicago (10,000)</span>
+    <span class="dpill">☁️ Open-Meteo weather (free API)</span>
+    <span class="dpill">🗺 OpenStreetMap routing</span>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="sec">System Overview</div>
+  <div class="g4">
+    <div class="stat"><div class="stat-lbl">Total Sessions</div>
+      <div class="stat-val blue" id="s-sess">89,976</div></div>
+    <div class="stat"><div class="stat-lbl">Features</div>
+      <div class="stat-val green">31</div>
+      <div class="stat-sub">25 temporal + 6 weather</div></div>
+    <div class="stat"><div class="stat-lbl">Stations</div>
+      <div class="stat-val cyan">127</div>
+      <div class="stat-sub">4 datasets · 4 cities</div></div>
+    <div class="stat"><div class="stat-lbl">ST-HGNN MAE</div>
+      <div class="stat-val amber" id="s-mae">—</div>
+      <div class="stat-sub" id="s-mae-sub">loading…</div></div>
+    <div class="stat"><div class="stat-lbl">Best Model R²</div>
+      <div class="stat-val green" id="s-r2">—</div></div>
+    <div class="stat"><div class="stat-lbl">PICP</div>
+      <div class="stat-val cyan" id="s-picp">—</div>
+      <div class="stat-sub">target ≥ 0.80</div></div>
+    <div class="stat"><div class="stat-lbl">Edge Types</div>
+      <div class="stat-val purple">4</div>
+      <div class="stat-sub">learnable weights</div></div>
+    <div class="stat"><div class="stat-lbl">Models Trained</div>
+      <div class="stat-val blue">5</div>
+      <div class="stat-sub">full ablation study</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab on"  id="tRes"  onclick="goTab('results')">Results</div>
+    <div class="tab"     id="tFc"   onclick="goTab('forecast')">Live Forecast</div>
+    <div class="tab"     id="tProb" onclick="goTab('prob')">Probabilistic</div>
+    <div class="tab"     id="tDec"  onclick="goTab('decisions')">Decisions</div>
+    <div class="tab"     id="tGen"  onclick="goTab('gen')">Generalisation</div>
+    <div class="tab"     id="tFig"  onclick="goTab('figs')">Figures (9)</div>
+  </div>
+
+  <!-- TAB: RESULTS -->
+  <div id="tab-results">
+    <div class="g2">
+      <div class="ccrd"><h3>ERROR METRICS — 5 MODELS</h3><canvas id="c-metrics"></canvas></div>
+      <div class="ccrd"><h3>RMSE PER FORECAST HORIZON</h3><canvas id="c-horizon"></canvas></div>
+    </div>
+    <div class="ccrd" style="margin-bottom:1.1rem">
+      <h3>FULL ABLATION TABLE</h3>
+      <div id="mt-wrap"><div class="empty">Results will appear automatically after training…</div></div>
+    </div>
+    <div class="g2">
+      <div class="ccrd"><h3>TRAINING LOSS CURVES</h3><canvas id="c-loss"></canvas></div>
+      <div class="ccrd"><h3>LEARNED HYPEREDGE WEIGHTS — Novel (Upgrade 3)</h3><canvas id="c-ew"></canvas></div>
+    </div>
+  </div>
+
+  <!-- TAB: FORECAST -->
+  <div id="tab-forecast" style="display:none">
+    <div class="ccrd" style="margin-bottom:1.1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3>LIVE ST-HGNN v2 FORECAST (t+1h to t+6h)</h3>
+        <button onclick="loadForecast()" style="background:var(--s2);border:1px solid var(--border);
+          color:var(--muted);border-radius:6px;padding:.3rem .75rem;cursor:pointer;font-size:.72rem;font-family:var(--mono)">↻ Refresh</button>
+      </div>
+      <canvas id="c-fc"></canvas>
+    </div>
+    <div class="g4" id="fc-chips"></div>
+  </div>
+
+  <!-- TAB: PROBABILISTIC -->
+  <div id="tab-prob" style="display:none">
+    <div class="sec">Probabilistic Forecasting — Q10 / Q50 / Q90 (Upgrade 4)</div>
+    <div class="prob-row">
+      <div class="prob-item"><label>PICP (target ≥ 0.80)</label><span id="picp-v">—</span></div>
+      <div class="prob-item"><label>PINAW (lower = sharper)</label><span id="pinaw-v">—</span></div>
+      <div class="prob-item"><label>Coverage interval</label>
+        <span style="font-size:.9rem;color:var(--muted)">Q10 → Q90 (80% PI)</span></div>
+    </div>
+    <div class="ccrd"><h3>PREDICTION INTERVALS — t+1h to t+6h</h3><canvas id="c-prob"></canvas></div>
+  </div>
+
+  <!-- TAB: DECISIONS -->
+  <div id="tab-decisions" style="display:none">
+    <div class="sec">Smart Charging Decisions — HGNN + Decision Engine</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.1rem">
+      <span class="badge b-green">⚡ CHARGE_HERE</span>
+      <span class="badge b-amber">↗ REDIRECT</span>
+      <span class="badge b-blue">🏠 HOME_CHARGE</span>
+      <span class="badge b-purple">⏱ DELAY</span>
+    </div>
+    <div class="dcards" id="dcards"><div class="empty">Loading decisions…</div></div>
+  </div>
+
+  <!-- TAB: GENERALISATION -->
+  <div id="tab-gen" style="display:none">
+    <div class="sec">Cross-Dataset Generalisation — Upgrade 1</div>
+    <div class="g2" style="margin-bottom:1.1rem">
+      <div class="ccrd"><h3>ST-HGNN v2 ACROSS 4 DATASETS</h3><canvas id="c-gen"></canvas></div>
+      <div class="ccrd" id="gen-stats"><h3>PER-DATASET METRICS</h3>
+        <div class="empty">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- TAB: FIGURES -->
+  <div id="tab-figs" style="display:none">
+    <div class="sec">9 Research Figures</div>
+    <div class="fgrid" id="fgrid"><div class="empty">Figures generated after training…</div></div>
+  </div>
+</div>
+
+<div class="lb" id="lb" onclick="closeLB()">
+  <div class="lb-x">✕</div><img id="lb-img" src="" alt="">
+</div>
+
+<script>
+const MC={'ST-HGNN v2':'#4f9eff','TFT-lite':'#22d46a','N-BEATS':'#f5a623',
+          'LSTM':'#ff4f6d','Transformer':'#a78bfa'};
+const charts={};
+let fcChart=null,probChart=null;
+let lastStatus='', dataLoaded=false;
+
+const FCAPS={
+  'fig1_predictions.png':        'Fig 1 — Predicted vs Actual (all 6 horizons)',
+  'fig2_ablation.png':           'Fig 2 — Ablation: 5 Models',
+  'fig3_loss_curves.png':        'Fig 3 — Training & Validation Loss',
+  'fig4_heatmap.png':            'Fig 4 — Demand Heatmap (Hour × DOW)',
+  'fig5_horizon_rmse.png':       'Fig 5 — RMSE per Forecast Horizon',
+  'fig6_residuals.png':          'Fig 6 — Residual Distribution',
+  'fig7_prediction_intervals.png':'Fig 7 — Probabilistic PI (PICP / PINAW)',
+  'fig8_generalisation.png':     'Fig 8 — Cross-Dataset Generalisation',
+  'fig9_edge_weights.png':       'Fig 9 — Learned Hyperedge Weights',
+};
+
+// ── AUTO-POLL STATUS ───────────────────────────────────────────────────────
+async function pollStatus(){
+  const d=await get('/api/status'); if(!d) return;
+  const dot=document.getElementById('sdot');
+  const txt=document.getElementById('stxt');
+  const fill=document.getElementById('auto-fill');
+  const bar=document.getElementById('top-progress');
+  const topFill=document.getElementById('top-fill');
+  const icon=document.getElementById('auto-icon');
+  const ah=document.getElementById('auto-h');
+  const ap=document.getElementById('auto-p');
+
+  dot.className=d.status;
+  txt.textContent={idle:'Idle',training:'Training…',loading:'Loading…',
+                   ready:'Ready ✓',error:'Error'}[d.status]||d.status;
+
+  if(d.status==='training'||d.status==='loading'){
+    bar.classList.add('show');
+    fill.style.width=d.progress+'%';
+    topFill.style.width=d.progress+'%';
+    icon.textContent=d.status==='loading'?'📂':'⚙️';
+    ah.textContent=d.status==='loading'?'Loading saved model…':'Training ST-HGNN v2…';
+    ap.textContent=d.message||'Please wait…';
+    document.getElementById('auto-banner').style.display='flex';
+  }
+
+  if(d.status==='ready' && lastStatus!=='ready'){
+    lastStatus='ready';
+    bar.classList.remove('show');
+    fill.style.width='100%';
+    icon.textContent='✅';
+    ah.textContent='Ready — Results loaded automatically';
+    ap.textContent=`Completed at ${d.finished_at?d.finished_at.slice(0,19):''} · Model saved to disk`;
+    setTimeout(()=>document.getElementById('auto-banner').style.display='none',4000);
+    if(!dataLoaded){ dataLoaded=true; loadAllData(); }
+  }
+
+  if(d.status==='error'){
+    icon.textContent='❌'; ah.textContent='Error';
+    ap.textContent=d.message; bar.classList.remove('show');
+  }
+}
+
+// ── LOAD ALL DATA AUTOMATICALLY ────────────────────────────────────────────
+async function loadAllData(){
+  await Promise.all([loadResults(), loadEW(), loadDecisions(), loadGen(), loadForecast(), loadProb()]);
+}
+
+// ── RESULTS ───────────────────────────────────────────────────────────────
+async function loadResults(){
+  const d=await get('/api/results'); if(!d||d.error) return;
+  const models=Object.keys(d);
+
+  // Update hero stats
+  const hgnn=d['ST-HGNN v2'];
+  if(hgnn){
+    set('s-mae', hgnn.overall?.MAE?.toFixed(3)||'—');
+    set('s-mae-sub','ST-HGNN v2 MAE');
+    set('s-r2', hgnn.overall?.R2?.toFixed(3)||'—');
+    const pb=hgnn.probabilistic||{};
+    set('s-picp', pb.PICP?(pb.PICP*100).toFixed(1)+'%':'—');
+    // PICP/PINAW for prob tab
+    set('picp-v',  pb.PICP?(pb.PICP*100).toFixed(1)+'%':'—');
+    set('pinaw-v', pb.PINAW||'—');
+  }
+
+  // Bar chart
+  mkChart('c-metrics','bar',{
+    labels:['MAE','RMSE','MAPE%'],
+    datasets:models.map(m=>({label:m,
+      data:['MAE','RMSE','MAPE'].map(k=>d[m].overall?.[k]||0),
+      backgroundColor:MC[m]||'#8b949e',borderRadius:5,borderSkipped:false}))
+  },chartOpts());
+
+  // Horizon RMSE
+  mkChart('c-horizon','line',{
+    labels:['t+1h','t+2h','t+3h','t+4h','t+5h','t+6h'],
+    datasets:models.map(m=>({label:m,
+      data:[1,2,3,4,5,6].map(h=>d[m][`h${h}`]?.RMSE||null),
+      borderColor:MC[m]||'#8b949e',backgroundColor:'transparent',
+      pointRadius:4,tension:.3,borderWidth:2}))
+  },chartOpts());
+
+  // Full table
+  let html=`<div style="overflow-x:auto"><table class="tbl"><thead><tr>
+    <th>Model</th><th>MAE</th><th>RMSE</th><th>MAPE%</th><th>R²</th>
+    <th>PICP</th><th>PINAW</th><th>Short MAE</th><th>Medium MAE</th>
+  </tr></thead><tbody>`;
+  models.forEach(m=>{
+    const o=d[m].overall||{}; const pb=d[m].probabilistic||{};
+    const s=d[m].short_avg||{}; const med=d[m].medium_avg||{};
+    const isBest=m==='ST-HGNN v2';
+    html+=`<tr ${isBest?'style="background:rgba(79,158,255,.06)"':''}>
+      <td><span class="badge b-blue">${m}</span>${isBest?' ⭐':''}</td>
+      <td>${o.MAE||'—'}</td><td>${o.RMSE||'—'}</td><td>${o.MAPE||'—'}</td>
+      <td style="color:${(o.R2||0)>.7?'var(--green)':'var(--amber)'}">${o.R2||'—'}</td>
+      <td style="color:${(pb.PICP||0)>.8?'var(--green)':'var(--amber)'}">${pb.PICP||'—'}</td>
+      <td>${pb.PINAW||'—'}</td>
+      <td>${s.MAE||'—'}</td><td>${med.MAE||'—'}</td></tr>`;
+  });
+  document.getElementById('mt-wrap').innerHTML=html+'</tbody></table></div>';
+
+  // Loss curves
+  const hist=await fetch('/results/training_history.json').then(r=>r.json()).catch(()=>null);
+  if(hist){
+    const nm=Object.keys(hist);
+    const ds=[];
+    nm.forEach(m=>{
+      ds.push({label:m+' tr',data:hist[m].train,borderColor:MC[m]||'#8b949e',
+               tension:.3,borderWidth:1.5,pointRadius:0});
+      ds.push({label:m+' val',data:hist[m].val,borderColor:MC[m]||'#8b949e',
+               borderDash:[4,3],tension:.3,borderWidth:1,pointRadius:0,opacity:.6});
+    });
+    mkChart('c-loss','line',{
+      labels:nm.length?hist[nm[0]].train.map((_,i)=>i+1):[],datasets:ds
+    },{...chartOpts(),plugins:{legend:{display:false}}});
+  }
+}
+
+// ── EDGE WEIGHTS ──────────────────────────────────────────────────────────
+async function loadEW(){
+  const d=await get('/api/edge_weights'); if(!d?.weights) return;
+  mkChart('c-ew','bar',{
+    labels:d.labels,
+    datasets:[{label:'Weight',data:d.weights,
+      backgroundColor:['#4f9eff','#22d46a','#f5a623','#a78bfa'],
+      borderRadius:6,borderSkipped:false}]
+  },{...chartOpts(),plugins:{legend:{display:false}}});
+}
+
+// ── FORECAST ──────────────────────────────────────────────────────────────
+async function loadForecast(){
+  const d=await get('/api/forecast'); if(!d||d.error) return;
+  if(fcChart) fcChart.destroy();
+  const ctx=document.getElementById('c-fc')?.getContext('2d'); if(!ctx) return;
+  fcChart=new Chart(ctx,{type:'line',data:{labels:d.labels,datasets:[
+    {label:'ST-HGNN v2',data:d.medium_pred,borderColor:'#4f9eff',
+     backgroundColor:'rgba(79,158,255,.1)',fill:true,pointRadius:5,tension:.35,borderWidth:2.5},
+    {label:'Actual',data:d.actual,borderColor:'#5a7090',
+     backgroundColor:'transparent',pointRadius:4,tension:.35,borderWidth:1.5,borderDash:[4,3]},
+  ]},options:{responsive:true,maintainAspectRatio:true,
+    plugins:{legend:{labels:{color:'#5a7090',font:{size:9}}}},
+    scales:{x:{ticks:{color:'#5a7090'},grid:{color:'#1e2d45'}},
+            y:{title:{display:true,text:'kWh',color:'#5a7090'},
+               ticks:{color:'#5a7090'},grid:{color:'#1e2d45'}}}}});
+
+  const sh=d.short_pred.length;
+  document.getElementById('fc-chips').innerHTML=d.medium_pred.map((v,i)=>`
+    <div class="stat">
+      <div class="stat-lbl">t+${i+1}h ${i<sh?'<span class="badge b-blue">short</span>':'<span class="badge b-amber">medium</span>'}</div>
+      <div class="stat-val ${i<sh?'blue':'amber'}">${v.toFixed(1)}</div>
+      <div class="stat-sub">kWh forecast</div>
+    </div>`).join('');
+}
+
+// ── PROBABILISTIC ──────────────────────────────────────────────────────────
+async function loadProb(){
+  const d=await get('/api/forecast'); if(!d||d.error||!d.q10) return;
+  if(probChart) probChart.destroy();
+  const ctx=document.getElementById('c-prob')?.getContext('2d'); if(!ctx) return;
+  probChart=new Chart(ctx,{type:'line',data:{labels:d.labels,datasets:[
+    {label:'Q10–Q90 band',data:d.q10,fill:'+1',
+     backgroundColor:'rgba(79,158,255,.15)',borderColor:'transparent',pointRadius:0},
+    {label:'Q90',data:d.q90,fill:false,
+     borderColor:'rgba(79,158,255,.3)',borderDash:[3,3],pointRadius:0,borderWidth:1},
+    {label:'Q50 (median)',data:d.q50,borderColor:'#4f9eff',
+     fill:false,pointRadius:5,tension:.35,borderWidth:2},
+    {label:'Actual',data:d.actual,borderColor:'#5a7090',
+     fill:false,pointRadius:4,tension:.35,borderWidth:1.5,borderDash:[4,3]},
+  ]},options:{responsive:true,maintainAspectRatio:true,
+    plugins:{legend:{labels:{color:'#5a7090',font:{size:9}}}},
+    scales:{x:{ticks:{color:'#5a7090'},grid:{color:'#1e2d45'}},
+            y:{ticks:{color:'#5a7090'},grid:{color:'#1e2d45'}}}}});
+}
+
+// ── DECISIONS ──────────────────────────────────────────────────────────────
+async function loadDecisions(){
+  const d=await get('/api/decision'); if(!d?.decisions?.length) return;
+  const AC={CHARGE_HERE:'b-green',REDIRECT:'b-amber',HOME_CHARGE:'b-blue',DELAY:'b-purple'};
+  document.getElementById('dcards').innerHTML=d.decisions.map(dc=>`
+    <div class="dc ${dc.action}">
+      <div class="dc-top">
+        <span class="dc-sid">${dc.station_id}</span>
+        <span class="badge ${AC[dc.action]||'b-blue'}">${dc.action}</span>
+      </div>
+      <div class="dc-reason">${dc.reason}</div>
+      <div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.3rem">
+        ${(dc.short_pred||[]).map((v,i)=>`<span class="badge b-blue">t+${i+1}: ${v}kWh</span>`).join('')}
+      </div>
+      <div class="conf-bar"><div class="conf-fill" style="width:${(dc.confidence*100).toFixed(0)}%"></div></div>
+      <div class="dc-meta">Confidence ${(dc.confidence*100).toFixed(0)}% · Trend: ${dc.demand_trend||'—'}${dc.redirect_to?` · → ${dc.redirect_to}`:''}</div>
+    </div>`).join('');
+}
+
+// ── GENERALISATION ─────────────────────────────────────────────────────────
+async function loadGen(){
+  const d=await get('/api/generalisation'); if(!Object.keys(d).length) return;
+  const names=Object.keys(d);
+  mkChart('c-gen','bar',{
+    labels:names,
+    datasets:[
+      {label:'MAE', data:names.map(n=>d[n].MAE), backgroundColor:'#4f9eff',borderRadius:5,borderSkipped:false},
+      {label:'RMSE',data:names.map(n=>d[n].RMSE),backgroundColor:'#22d46a',borderRadius:5,borderSkipped:false},
+    ]
+  },chartOpts());
+
+  const wrap=document.getElementById('gen-stats');
+  let html=`<h3 style="font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:1rem;font-family:var(--mono)">PER-DATASET METRICS</h3>
+    <table class="tbl"><thead><tr><th>Dataset</th><th>MAE</th><th>RMSE</th><th>MAPE%</th><th>R²</th></tr></thead><tbody>`;
+  names.forEach(n=>{const o=d[n];
+    html+=`<tr><td><span class="badge b-cyan">${n}</span></td>
+      <td>${o.MAE}</td><td>${o.RMSE}</td><td>${o.MAPE}</td>
+      <td style="color:${o.R2>.6?'var(--green)':'var(--amber)'}">${o.R2}</td></tr>`;
+  });
+  wrap.innerHTML=html+'</tbody></table>';
+}
+
+// ── FIGURES ────────────────────────────────────────────────────────────────
+async function loadFigs(){
+  const files=await get('/api/figures');
+  const grid=document.getElementById('fgrid');
+  if(!files?.length){
+    grid.innerHTML='<div class="empty">Figures are generated after training completes.</div>';
+    return;
+  }
+  grid.innerHTML=files.map(f=>`
+    <div class="fig" onclick="openLB('/figures/${f}')">
+      <img src="/figures/${f}" alt="${f}" loading="lazy">
+      <div class="fig-cap">${FCAPS[f]||f}</div>
+    </div>`).join('');
+}
+
+// ── TABS ───────────────────────────────────────────────────────────────────
+function goTab(name){
+  const all=['results','forecast','prob','decisions','gen','figs'];
+  const ids={results:'tRes',forecast:'tFc',prob:'tProb',decisions:'tDec',gen:'tGen',figs:'tFig'};
+  all.forEach(t=>{ document.getElementById('tab-'+t).style.display=t===name?'block':'none'; });
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(ids[name]).classList.add('on');
+  if(name==='figs') loadFigs();
+}
+
+// ── LB ─────────────────────────────────────────────────────────────────────
+function openLB(src){document.getElementById('lb-img').src=src;document.getElementById('lb').classList.add('open')}
+function closeLB(){document.getElementById('lb').classList.remove('open')}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLB()});
+
+// ── UTILS ──────────────────────────────────────────────────────────────────
+async function get(url){try{return await fetch(url).then(r=>r.json())}catch{return null}}
+function set(id,v){const el=document.getElementById(id);if(el)el.textContent=v}
+
+function chartOpts(){
+  return {plugins:{legend:{labels:{color:'#5a7090',font:{size:9,family:'JetBrains Mono'}}}},
+    scales:{x:{ticks:{color:'#5a7090'},grid:{color:'#1e2d45'}},
+            y:{ticks:{color:'#5a7090'},grid:{color:'#1e2d45'}}}};
+}
+
+function mkChart(id,type,data,opts){
+  if(charts[id]) charts[id].destroy();
+  const ctx=document.getElementById(id)?.getContext('2d'); if(!ctx) return;
+  charts[id]=new Chart(ctx,{type,data,options:{responsive:true,maintainAspectRatio:true,...opts}});
+}
+
+// ── BOOT ───────────────────────────────────────────────────────────────────
+setInterval(pollStatus, 2500);
+pollStatus();
+
+// If results already exist on disk, load immediately
+setTimeout(async()=>{
+  const d=await get('/api/results');
+  if(d && !d.error && Object.keys(d).length>0 && !dataLoaded){
+    dataLoaded=true;
+    loadAllData();
+  }
+}, 1500);
+</script>
+</body>
+</html>
