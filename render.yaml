@@ -8,7 +8,3 @@ services:
     envVars:
       - key: PORT
         value: 5000
-    disk:
-      name: chargepath-data
-      mountPath: /app/checkpoints
-      sizeGB: 1
