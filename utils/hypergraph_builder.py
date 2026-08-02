@@ -75,6 +75,13 @@ class SpatioTemporalHypergraph:
                     H[v, j] = 1.0
 
         W = np.array(weights, dtype=np.float32)
+        
+        # Precompute degree inverses for dynamic theta construction
+        Dv = H.sum(axis=1)
+        De = H.sum(axis=0)
+        self.Dv_inv = np.where(Dv > 0, 1.0/Dv, 0.0).astype(np.float32)
+        self.De_inv = np.where(De > 0, 1.0/De, 0.0).astype(np.float32)
+        
         self.H            = H
         self.W            = W
         self.edge_type_ids = np.array(type_ids, dtype=np.int64)

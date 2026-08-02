@@ -61,7 +61,7 @@ def prepare_data(cfg: dict) -> dict:
     combined = datasets["combined"]
 
     feat = build_feature_matrix(combined, use_weather=cfg["use_weather"])
-    save_scaler(feat["scaler"], os.path.join(cfg["ckpt_dir"], "scaler.pkl"))
+    save_scaler(feat["scaler"], feat["scaler_y"], os.path.join(cfg["ckpt_dir"], "scaler.pkl"))
 
     X, y = feat["X"], feat["y"]
     Xs, ys = build_sequences(X, y, cfg["seq_len"], cfg["medium_horizon"])
@@ -90,6 +90,10 @@ def prepare_data(cfg: dict) -> dict:
             spatial_radius_km=0.5,
             use_user_edges=True).build(hg_df)
     theta = torch.tensor(hg.theta, dtype=torch.float32)
+    H_ts  = torch.tensor(hg.H, dtype=torch.float32)
+    Dv_inv_ts = torch.tensor(hg.Dv_inv, dtype=torch.float32)
+    De_inv_ts = torch.tensor(hg.De_inv, dtype=torch.float32)
+    edge_type_ids = torch.tensor(hg.edge_type_ids, dtype=torch.long)
 
     # Per-dataset generalisation loaders (Upgrade 1)
     gen_loaders = {}
@@ -119,6 +123,7 @@ def prepare_data(cfg: dict) -> dict:
 
     return dict(
         loaders=loaders, theta=theta,
+        H=H_ts, Dv_inv=Dv_inv_ts, De_inv=De_inv_ts, edge_type_ids=edge_type_ids,
         in_features=feat["in_features"],
         station_features=feat["station_features"],
         hourly_df=feat["hourly_df"],
@@ -126,16 +131,38 @@ def prepare_data(cfg: dict) -> dict:
         hg_stats=hg.stats,
         df=combined,
         gen_loaders=gen_loaders,
+        sc_y=feat["scaler_y"],
     )
 
 
 def train_one(model: nn.Module, loaders: dict,
-              theta: torch.Tensor, cfg: dict,
+              cfg: dict, data: dict,
               name: str = "model") -> dict:
     dev = cfg["device"]
-    model.to(dev); theta = theta.to(dev)
-    opt   = torch.optim.Adam(model.parameters(),
-                               lr=cfg["lr"], weight_decay=cfg["weight_decay"])
+    model.to(dev)
+    theta = data["theta"].to(dev)
+    kw = {"theta": theta}
+    if "H" in data:
+        kw.update({
+            "H": data["H"].to(dev),
+            "Dv_inv": data["Dv_inv"].to(dev),
+            "De_inv": data["De_inv"].to(dev),
+            "edge_types": data["edge_type_ids"].to(dev)
+        })
+
+    # Separate hypergraph weights to give them a higher LR and zero weight decay
+    hg_params = []
+    other_params = []
+    for n, p in model.named_parameters():
+        if "etype_w" in n:
+            hg_params.append(p)
+        else:
+            other_params.append(p)
+
+    opt = torch.optim.Adam([
+        {"params": other_params},
+        {"params": hg_params, "lr": cfg["lr"] * 10.0, "weight_decay": 0.0}
+    ], lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     sched = ReduceLROnPlateau(opt, "min", patience=5, factor=0.5)
     crit  = nn.HuberLoss(delta=1.0)
     sh    = cfg["short_horizon"]
@@ -155,17 +182,25 @@ def train_one(model: nn.Module, loaders: dict,
         for Xb, yb in loaders["train"]:
             Xb, yb = Xb.to(dev), yb.to(dev)
             opt.zero_grad()
-            loss = _loss(model(Xb, theta=theta), yb, sh, crit, lp)
+            loss = _loss(model(Xb, **kw), yb, sh, crit, lp)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), cfg["grad_clip"])
             opt.step(); tr_ls.append(loss.item())
+
+            # Print gradient to verify backprop is reaching etype_w
+            if name == "ST-HGNN v2" and hasattr(model, 'hgnn'):
+                # just print for the first batch to avoid flooding stdout
+                if len(tr_ls) == 1:
+                    grad = model.hgnn[0].etype_w.grad
+                    if grad is not None:
+                        print(f"      [Debug] ST-HGNN v2 backprop active! etype_w grad: {grad.detach().cpu().numpy()}")
 
         model.eval(); vl_ls = []
         with torch.no_grad():
             for Xb, yb in loaders["val"]:
                 Xb, yb = Xb.to(dev), yb.to(dev)
                 vl_ls.append(
-                    _loss(model(Xb, theta=theta), yb, sh, crit, lp).item())
+                    _loss(model(Xb, **kw), yb, sh, crit, lp).item())
 
         tl, vl = np.mean(tr_ls), np.mean(vl_ls)
         sched.step(vl)
@@ -217,7 +252,7 @@ def run_training(cfg: dict = None, progress_cb=None) -> dict:
     for i, (name, model) in enumerate(models_def.items()):
         cb(15 + i*12, f"Training {name}…")
         hist = train_one(model, data["loaders"],
-                         data["theta"], cfg, name)
+                         cfg, data, name)
         results[name] = {"model": model, "history": hist}
         all_hist[name] = hist
 

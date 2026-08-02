@@ -14,8 +14,12 @@ from torch.utils.data import DataLoader
 def _point(p: np.ndarray, t: np.ndarray) -> dict:
     mae  = float(np.mean(np.abs(p - t)))
     rmse = float(np.sqrt(np.mean((p - t)**2)))
-    mape = float(np.mean(
-        np.abs((p - t) / np.clip(np.abs(t), 1e-6, None))) * 100)
+    # Mask out zeros to avoid exploding MAPE
+    mask = np.abs(t) > 1e-3
+    if mask.sum() > 0:
+        mape = float(np.mean(np.abs((p[mask] - t[mask]) / t[mask])) * 100)
+    else:
+        mape = 0.0
     ss_r = float(np.sum((p - t)**2))
     ss_t = float(np.sum((t - t.mean())**2))
     r2   = float(1 - ss_r / (ss_t + 1e-8))
@@ -33,13 +37,15 @@ def _prob(q: np.ndarray, t: np.ndarray) -> dict:
 
 
 def evaluate_model(model, loader: DataLoader,
-                   theta: torch.Tensor, device: str,
-                   sh: int = 3, mh: int = 6) -> tuple:
-    model.eval().to(device); theta = theta.to(device)
+                   kw: dict, device: str,
+                   sh: int = 3, mh: int = 6, sc_y=None) -> tuple:
+    model.eval().to(device)
+    # Move all graph tensors to device
+    kw = {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k,v in kw.items()}
     pts, tgts, qps = [], [], []
     with torch.no_grad():
         for Xb, yb in loader:
-            out = model(Xb.to(device), theta=theta)
+            out = model(Xb.to(device), **kw)
             pts.append(out["medium"].cpu().numpy())
             tgts.append(yb.numpy())
             if "quantile" in out:
@@ -48,6 +54,13 @@ def evaluate_model(model, loader: DataLoader,
     P = np.vstack(pts)
     T = np.vstack(tgts)
     Q = np.concatenate(qps, axis=0) if qps else None
+
+    if sc_y is not None:
+        P = sc_y.inverse_transform(P)
+        T = sc_y.inverse_transform(T)
+        if Q is not None:
+            shape = Q.shape
+            Q = sc_y.inverse_transform(Q.reshape(-1, 3)).reshape(shape)
 
     result = {}
     result["overall"]    = _point(P, T)
@@ -61,8 +74,8 @@ def evaluate_model(model, loader: DataLoader,
 
 
 def evaluate_all(ablation: dict, test_loader: DataLoader,
-                 theta: torch.Tensor, device: str,
-                 sh: int = 3, mh: int = 6) -> tuple:
+                 kw: dict, device: str,
+                 sh: int = 3, mh: int = 6, sc_y=None) -> tuple:
     comparison, predictions = {}, {}
     print(f"\n{'─'*65}")
     print(f"  {'Model':<22} MAE    RMSE   MAPE%  R²     PICP   PINAW")
@@ -70,7 +83,7 @@ def evaluate_all(ablation: dict, test_loader: DataLoader,
     for name, res in ablation.items():
         if name.startswith("_"): continue
         m, P, T, Q = evaluate_model(
-            res["model"], test_loader, theta, device, sh, mh)
+            res["model"], test_loader, kw, device, sh, mh, sc_y)
         comparison[name]  = m
         predictions[name] = {"preds": P, "targets": T, "quantiles": Q}
         pb = m.get("probabilistic", {})
@@ -86,14 +99,14 @@ def evaluate_all(ablation: dict, test_loader: DataLoader,
 
 
 def evaluate_generalisation(model, gen_loaders: dict,
-                             theta: torch.Tensor, device: str,
-                             sh: int = 3, mh: int = 6) -> dict:
+                             kw: dict, device: str,
+                             sh: int = 3, mh: int = 6, sc_y=None) -> dict:
     """Upgrade 1: test ST-HGNN v2 on each held-out dataset."""
     gen_results = {}
     print("\n[Generalisation] ST-HGNN v2 cross-dataset evaluation:")
     for name, loader in gen_loaders.items():
         try:
-            m, _, _, _ = evaluate_model(model, loader, theta, device, sh, mh)
+            m, _, _, _ = evaluate_model(model, loader, kw, device, sh, mh, sc_y)
             gen_results[name] = m["overall"]
             pb = m.get("probabilistic", {})
             print(f"  {name:<20} MAE={m['overall']['MAE']:.4f}  "

@@ -99,17 +99,20 @@ def build_feature_matrix(df: pd.DataFrame,
     X  = hourly[all_cols].values.astype(np.float32)
     y  = hourly["demand"].values.astype(np.float32)
     sc = StandardScaler()
+    sc_y = StandardScaler()
     Xs = sc.fit_transform(X)
+    ys = sc_y.fit_transform(y.reshape(-1, 1)).flatten()
 
-    print(f"[Features] X={Xs.shape}  y={y.shape}  "
+    print(f"[Features] X={Xs.shape}  y={ys.shape}  "
           f"n_features={len(all_cols)}  weather={'YES' if weather_cols_used else 'NO'}")
 
     return {
         "X":               Xs,
-        "y":               y,
+        "y":               ys,
         "feature_names":   all_cols,
         "weather_cols":    weather_cols_used,
         "scaler":          sc,
+        "scaler_y":        sc_y,
         "station_features":_station_features(df),
         "hourly_df":       hourly,
         "timestamps":      hourly["timestamp"].values,
@@ -142,9 +145,12 @@ def build_sequences(X: np.ndarray, y: np.ndarray,
     return Xs, ys
 
 
-def save_scaler(sc, path="checkpoints/scaler.pkl"):
+def save_scaler(sc, sc_y, path="checkpoints/scaler.pkl"):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path,"wb") as f: pickle.dump(sc, f)
+    with open(path,"wb") as f: pickle.dump({"sc": sc, "sc_y": sc_y}, f)
 
 def load_scaler(path="checkpoints/scaler.pkl"):
-    with open(path,"rb") as f: return pickle.load(f)
+    with open(path,"rb") as f: 
+        obj = pickle.load(f)
+        if isinstance(obj, dict): return obj["sc"], obj["sc_y"]
+        return obj, None

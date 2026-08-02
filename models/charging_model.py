@@ -52,7 +52,7 @@ class QuantileHead(nn.Module):
         super().__init__()
         self.heads = nn.ModuleList([
             nn.Sequential(
-                nn.Linear(d, d // 2), nn.ReLU(),
+                nn.Linear(d, d // 2), nn.Softplus(),
                 nn.Dropout(dropout),
                 nn.Linear(d // 2, horizon),
             ) for _ in QUANTILES
@@ -81,18 +81,33 @@ class LearnableHGConv(nn.Module):
         self.fc      = nn.Linear(in_dim, out_dim)
         self.bn      = nn.BatchNorm1d(out_dim)
         self.drop    = nn.Dropout(dropout)
-        # Learnable per-type weight (initialised to 0 → softplus ≈ 0.69)
-        self.etype_w = nn.Parameter(torch.zeros(n_edge_types))
+        # Learnable per-type weight (initialised to 1s)
+        self.etype_w = nn.Parameter(torch.ones(n_edge_types))
 
-    def forward(self, x: torch.Tensor, theta: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, theta: torch.Tensor, **kw) -> torch.Tensor:
         """x [N, in_dim]  theta [N, N]"""
+        H = kw.get("H")
+        Dv_inv = kw.get("Dv_inv")
+        De_inv = kw.get("De_inv")
+        edge_types = kw.get("edge_types")
+
+        if H is not None and Dv_inv is not None and De_inv is not None and edge_types is not None:
+            # Reconstruct theta dynamically using learnable parameters with Softmax for competition
+            W_types = F.softmax(self.etype_w, dim=0) * self.etype_w.shape[0]
+            W = W_types[edge_types]
+            HW = H * W.unsqueeze(0)
+            HWDe = HW * De_inv.unsqueeze(0)
+            theta_dyn = Dv_inv.unsqueeze(1) * (HWDe @ H.t())
+            # Crop to current batch size
+            theta = _crop_theta(theta_dyn, x.shape[0])
+
         x  = self.fc(F.relu(theta @ x))
         if x.shape[0] > 1:
             x = self.bn(x)
         return self.drop(x)
 
     def get_weights(self) -> list:
-        return F.softplus(self.etype_w).detach().cpu().tolist()
+        return (F.softmax(self.etype_w, dim=0) * self.etype_w.shape[0]).detach().cpu().tolist()
 
 
 class TemporalAttn(nn.Module):
@@ -146,7 +161,7 @@ class STHGNNv2(nn.Module):
 
         def _head(out_dim):
             return nn.Sequential(
-                nn.Linear(d_model, d_model // 2), nn.ReLU(),
+                nn.Linear(d_model, d_model // 2), nn.Softplus(),
                 nn.Dropout(dropout),
                 nn.Linear(d_model // 2, out_dim))
 
@@ -169,7 +184,7 @@ class STHGNNv2(nn.Module):
             xf = x.reshape(B*T, self.d_model)
             th = _crop_theta(theta, B*T)
             for layer in self.hgnn:
-                xf = layer(xf, th)
+                xf = layer(xf, th, **kw)
             x = xf.reshape(B, T, self.d_model)
         x   = self.attn(x)
         ctx = x[:, -1, :]                       # [B, d]
